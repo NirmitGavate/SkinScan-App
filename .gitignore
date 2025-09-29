@@ -9,7 +9,7 @@ dist/
 web-build/
 expo-env.d.ts
 .vscode/
-
+backend/models
 # Native
 .kotlin/
 *.orig.*

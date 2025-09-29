@@ -31,6 +31,7 @@ export default function LandingPage() {
         Fast, simple, and designed to keep your skin safe.
       </Text>
 
+      {/* Sign Up Button */}
       <TouchableOpacity
         style={styles.button}
         onPress={() => router.push('/signup')} // Navigate to Sign Up
@@ -38,10 +39,13 @@ export default function LandingPage() {
         <Text style={styles.buttonText}>Join Us!</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={()=>router.push("/signup")}>
-      <Text style={styles.logs} onPress={() => router.push('/signup')}>
-        Already a member? Login
-      </Text>
+      {/* Start Scan Button */}
+
+      {/* Login link */}
+      <TouchableOpacity onPress={() => router.push("/login")}>
+        <Text style={styles.logs}>
+          Already a member? Login
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -57,8 +61,8 @@ const styles = StyleSheet.create({
   title: { fontSize: 36, fontWeight: 'bold', color: '#4b7bec', marginBottom: 5 },
   subtitle: { fontSize: 16, color: '#778ca3', marginBottom: 20 },
   image: { width: 200, height: 200, marginVertical: 20 },
-  description: { fontSize: 16, textAlign: 'center', color: '#2d3436', marginBottom: 18, marginTop: 10,fontWeight:"medium"},
-  logs: { fontSize: 16, color:'#4b7bec',textAlign: 'center', marginTop: 20},
+  description: { fontSize: 16, textAlign: 'center', color: '#2d3436', marginBottom: 18, marginTop: 10, fontWeight:"500"},
+  logs: { fontSize: 16, color:'#4b7bec', textAlign: 'center', marginTop: 20 },
   button: { backgroundColor: '#4b7bec', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 25 },
   buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
 });
