@@ -1,9 +1,11 @@
-import React, { useState } from "react";
-import { View, Text, Button, Image, StyleSheet, Alert } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import { Alert, Button, Image, StyleSheet, Text, View } from "react-native";
 
 export default function Home() {
   const [image, setImage] = useState<string | null>(null);
+  const router = useRouter();
 
   // Pick image from gallery
   const pickImage = async () => {
@@ -55,10 +57,23 @@ export default function Home() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Upload Image</Text>
-      <Button title="Pick an image" onPress={pickImage} />
+      <Text style={styles.title}>Upload Image for Analysis</Text>
+
+      <View style={styles.buttonContainer}>
+        <Button title="Pick an image" onPress={pickImage} />
+        <Button title="Upload Image" onPress={uploadImage} />
+      </View>
+
       {image && <Image source={{ uri: image }} style={styles.image} />}
-      <Button title="Upload Image" onPress={uploadImage} />
+      
+      {/* 👇 New Button for Skin Type Quiz */}
+      <View style={styles.quizButtonContainer}>
+        <Button 
+          title="Know Your Skin Type" 
+          onPress={() => router.push('/skinTypeQuiz')} 
+          color="#4b7bec"
+        />
+      </View>
     </View>
   );
 }
@@ -69,6 +84,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 16,
     backgroundColor: "#f5f5f5",
+    alignItems: 'center',
   },
   title: {
     fontSize: 24,
@@ -82,4 +98,14 @@ const styles = StyleSheet.create({
     marginVertical: 16,
     borderRadius: 12,
   },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '80%',
+    marginBottom: 20,
+  },
+  quizButtonContainer: {
+    marginTop: 20,
+    width: '80%',
+  }
 });
