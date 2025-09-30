@@ -29,14 +29,39 @@ export default function Home() {
     }
   };
 
-  // Upload image to backend
+  // Upload image to backend - FUNCTIONALITY RESTORED
   const uploadImage = async () => {
     if (!image) {
       Alert.alert("No image selected", "Please select an image first.");
       return;
     }
-    // ... (Your existing upload logic) ...
-    Alert.alert("Uploading...", "This feature is in progress.");
+
+    const formData = new FormData();
+    formData.append("file", {
+      uri: image,
+      name: "photo.jpg",
+      type: "image/jpeg",
+    } as any);
+
+    try {
+      const response = await fetch("http://10.0.2.2:5000/api/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        Alert.alert("Success", "Image uploaded successfully!");
+      } else {
+        Alert.alert("Error", data.error || "Upload failed");
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert("Error", "Something went wrong!");
+    }
   };
 
   return (
