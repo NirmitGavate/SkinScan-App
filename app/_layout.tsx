@@ -7,6 +7,7 @@ export default function RootLayout() {
       <Stack.Screen name="signup" options={{ title: "Signup" }} />
       <Stack.Screen name="login" options={{ title: "Login" }} />
       <Stack.Screen name="home" options={{ title: "Home" }} />
+      <Stack.Screen name="skinTypeQuiz" options={{ title: "Know Your Skin Type" }} />
     </Stack>
   );
 }

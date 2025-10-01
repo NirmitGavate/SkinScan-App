@@ -6,19 +6,21 @@ from pymongo import MongoClient
 from ultralytics import YOLO
 import numpy as np
 import cv2
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+mongodb_uri = os.getenv("MONGODB_URI")
 app = Flask(__name__)
 CORS(app)
 
-# -------- MongoDB Setup --------
-# Local MongoDB
-# client = MongoClient("mongodb://localhost:27017")
-
 # MongoDB Atlas
-client = MongoClient("mongodb+srv://admin:12345@cluster0.pohau2y.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+client = MongoClient(mongodb_uri)
 # print(client.list_database_names())
 db = client['user-info']
 users_collection = db['users']
-
+db_blogs=client['blogs']
+blogs_collection=db_blogs['blog-info']
 # # -------- Signup API --------
 @app.route('/api/signup', methods=['POST'])
 def signup():
@@ -112,6 +114,52 @@ def detect_lesion():
 
     return jsonify({"detections": response_boxes})
 
+@app.route("/api/blogs",methods=['GET'])
+def get_blogs():
+    try:
+        # Fetch all blogs sorted by creation date (newest first)
+        blogs_cursor = blogs_collection.find().sort("created_at", -1)
+        blogs_list = []
+        for blog in blogs_cursor:
+            blogs_list.append({
+                "_id": str(blog["_id"]),  # ObjectId -> string
+                "title": blog.get("title"),
+                "slug": blog.get("slug"),
+                "category": blog.get("category"),
+                "summary": blog.get("summary"),
+                "tags": blog.get("tags", []),
+                "content": blog.get("content", []),
+                "references": blog.get("references", []),
+                "created_at": blog.get("created_at"),
+                "updated_at": blog.get("updated_at")
+            })
+        return jsonify(blogs_list), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
+def serialize_blog(blog):
+    return {
+        "_id": str(blog["_id"]),
+        "title": blog.get("title"),
+        "slug": blog.get("slug"),
+        "category": blog.get("category"),
+        "summary": blog.get("summary"),
+        "tags": blog.get("tags", []),
+        "content": blog.get("content", []),
+        "references": blog.get("references", []),
+        "image_url": blog.get("image_url"),
+        "created_at": blog.get("created_at"),
+        "updated_at": blog.get("updated_at")
+    }
+
+@app.route("/api/blogs/<slug>", methods=['GET'])
+def get_blog_by_slug(slug):
+    try:
+        blog = blogs_collection.find_one({"slug": slug})
+        if not blog:
+            return jsonify({"error": "Blog not found"}), 404
+        return jsonify(serialize_blog(blog)), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 if __name__ == '__main__':
     app.run(debug=True)
