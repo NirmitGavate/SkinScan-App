@@ -1,50 +1,100 @@
-# Welcome to your Expo app 👋
+# SkinScan App 🩺📱
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**SkinScan** is a cutting-edge mobile application designed to empower users to proactively monitor their skin health. Using a combination of advanced **AI-powered computer vision** and interactive features, the app provides a comprehensive solution for **early skin lesion detection**, skin care guidance, and personalized health recommendations.
 
-## Get started
+The primary goal is to provide an accessible and user-friendly tool that encourages consistent monitoring and enhances awareness of potential skin health issues.
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
+## 🌟 Features
 
-2. Start the app
+### 1. Real-time Lesion Detection
+- **Fast, on-device detection** using a custom-trained **YOLOv8** model.
+- Automatically localizes skin lesions in images captured by the user's phone camera.
+- Ensures only valid, correctly cropped lesion images are passed to the classifier for maximum accuracy.
 
-   ```bash
-   npx expo start
-   ```
+### 2. Multi-class Lesion Classification
+- Classifies lesions into **6 clinically relevant categories**:
+  - **MEL** (Melanoma)
+  - **BCC** (Basal Cell Carcinoma)
+  - **SCC** (Squamous Cell Carcinoma)
+  - **AK** (Actinic Keratosis)
+  - **NEV** (Nevus)
+  - **SEK** (Seborrheic Keratosis)
+- Uses **lightweight CNN models** (MobileNetV3, EfficientNet-lite) optimized for mobile deployment.
+- **Quantization and pruning** techniques applied to ensure low latency and small model size.
 
-In the output, you'll find options to open the app in a
+### 3. Know Your Skin Type & Risk Assessment
+- An interactive questionnaire assesses the user's skin type (dry, oily, combination, sensitive, etc.).
+- Provides **personalized skincare recommendations** and evaluates the potential **risk of developing skin cancer** based on user responses (e.g., sun exposure history, family history).
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+### 4. Chatbot Integration
+- An embedded **AI chatbot** offers real-time assistance.
+- It can answer user questions about suspicious lesions, provide general skin health and lifestyle tips, and offer preventive measures.
+- Designed to enhance user engagement and provide immediate, context-aware guidance.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+### 5. Regular Check Reminders (Optional)
+- Users can opt-in for **periodic reminders** to perform self-checks and document new or changing lesions.
+- Encourages consistent monitoring and chronological tracking of skin health.
 
-## Get a fresh project
+### 6. Location-based UV & Temperature Suggestions
+- Fetches **real-time UV index and local temperature** based on the user’s location (via OpenWeather API).
+- Offers timely, preventive tips:
+  - Reminder to apply sunscreen during high UV hours.
+  - Suggestion to limit outdoor exposure at peak sunlight times.
+  - Hydration and appropriate skin protection advice.
 
-When you're ready, run:
+### 7. Educational Content
+- Curated resources including **videos, blogs, and articles** on:
+  - Skin cancer awareness and facts
+  - Effective prevention strategies
+  - Daily and seasonal skin care best practices
+- Aims to enhance user awareness and foster proactive skin health management.
+
+### 8. Mobile Optimization
+- The UI is designed for an intuitive, smooth user experience on smartphones.
+- Lightweight model deployment ensures **low latency and minimal battery consumption**, making it practical for daily use.
+
+---
+
+## 📸 Screenshots & GIFs
+
+| Home Screen | Lesion Detection | Skin Type Quiz | Educational Blogs |
+| :---: | :---: | :---: | :---: |
+| ![Landing Page Screen](./screenshots/LandingPage.png) | ![Login Page Screen](./screenshots/LoginPage.png) | ![Skin Type Quiz](./screenshots/SkinType.png) | ![Educational Blogs](./screenshots/BlogsPage.png) |
+
+---
+
+## 🚀 Installation & Setup
+
+### Prerequisites
+
+- Node.js & npm
+- Python 3.x
+- Expo CLI
+
+### 1. Clone the repository
 
 ```bash
-npm run reset-project
+git clone [https://github.com/NirmitGavate/SkinScan-App.git](https://github.com/NirmitGavate/SkinScan-App.git)
+cd SkinScan-App
 ```
+##  Project Structure
+```graphql
+SkinScan-App/
+│
+├─ app/                # React Native screens, navigation, and components
+├─ backend/            # Flask API, image handling, model serving, and blogs
+├─ models/             # Pretrained YOLOv8 and CNN classification models
+├─ assets/             # Images, icons, fonts, and placeholder content
+├─ package.json        # Frontend dependencies
+└─ README.md
+```
+## 🛠 Tech Stack
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+| Category | Key Technologies |
+| :--- | :--- |
+| **Frontend** | React Native, Expo Router, MaterialCommunityIcons |
+| **Backend** | Python, Flask, MongoDB |
+| **AI/ML Models** | YOLOv8 (Lesion Detection), MobileNetV3 / EfficientNet-lite (Classification) |
+| **Integrations** | Expo Image Picker, AI Chatbot API, OpenWeather API (UV & Temperature) |
