@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import React, { useState } from "react";
 import { 
   View, 
@@ -11,6 +12,12 @@ import {
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+=======
+import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
+import React, { useState } from "react";
+import { Alert, Button, Image, StyleSheet, Text, View } from "react-native";
+>>>>>>> 2e14e0f44355ef4eb7a53680d589f8724bf22b92
 
 export default function Home() {
   const [image, setImage] = useState<string | null>(null);
@@ -65,6 +72,7 @@ export default function Home() {
   };
 
   return (
+<<<<<<< HEAD
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Skin Health Analysis</Text>
@@ -111,6 +119,27 @@ export default function Home() {
         <Text style={styles.blogsButtonText}>View Blogs</Text>
       </TouchableOpacity>
     </ScrollView>
+=======
+    <View style={styles.container}>
+      <Text style={styles.title}>Upload Image for Analysis</Text>
+
+      <View style={styles.buttonContainer}>
+        <Button title="Pick an image" onPress={pickImage} />
+        <Button title="Upload Image" onPress={uploadImage} />
+      </View>
+
+      {image && <Image source={{ uri: image }} style={styles.image} />}
+      
+      {/* 👇 New Button for Skin Type Quiz */}
+      <View style={styles.quizButtonContainer}>
+        <Button 
+          title="Know Your Skin Type" 
+          onPress={() => router.push('/skinTypeQuiz')} 
+          color="#4b7bec"
+        />
+      </View>
+    </View>
+>>>>>>> 2e14e0f44355ef4eb7a53680d589f8724bf22b92
   );
 }
 
@@ -118,12 +147,16 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     padding: 16,
+<<<<<<< HEAD
     backgroundColor: '#f5f5f5',
     alignItems: 'center',
   },
   header: {
     width: '100%',
     marginBottom: 20,
+=======
+    backgroundColor: "#f5f5f5",
+>>>>>>> 2e14e0f44355ef4eb7a53680d589f8724bf22b92
     alignItems: 'center',
   },
   title: {
@@ -167,6 +200,7 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 10,
   },
+<<<<<<< HEAD
   placeholder: {
     alignItems: 'center',
   },
@@ -236,3 +270,16 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 });
+=======
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '80%',
+    marginBottom: 20,
+  },
+  quizButtonContainer: {
+    marginTop: 20,
+    width: '80%',
+  }
+});
+>>>>>>> 2e14e0f44355ef4eb7a53680d589f8724bf22b92
