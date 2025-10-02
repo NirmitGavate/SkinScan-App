@@ -57,11 +57,11 @@ The primary goal is to provide an accessible and user-friendly tool that encoura
 
 ---
 
-## 📸 Screenshots & GIFs
+## 📸 Screenshots 
 
 | Home Screen | Lesion Detection | Skin Type Quiz | Educational Blogs |
 | :---: | :---: | :---: | :---: |
-| ![Landing Page Screen](./screenshots/LandingPage.png) | ![Login Page Screen](./screenshots/LoginPage.png) | ![Skin Type Quiz](./screenshots/SkinType.png) | ![Educational Blogs](./screenshots/BlogsPage.png) |
+| <img src="./screenshots/LandingPage.png" width="200"/> | <img src="./screenshots/LoginPage.png" width="200"/> | <img src="./screenshots/SkinType.png" width="200"/> | <img src="./screenshots/BlogsPage.png" width="200"/> |
 
 ---
 
