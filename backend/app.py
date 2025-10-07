@@ -17,6 +17,7 @@ load_dotenv()
 
 # -------- Secure MongoDB Setup --------
 MONGO_URI = os.getenv('MONGO_URI') 
+WEATHERBIT_API=os.getenv("WEATHERBIT_API_KEY")
 if not MONGO_URI:
     raise ValueError("No MONGO_URI found in environment variables. Please set it in your .env file.")
 
@@ -27,9 +28,9 @@ db_blogs=client['blogs']
 blogs_collection=db_blogs['blog-info']
 
 # Get OpenWeatherMap API Key
-OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY") 
-if not OPENWEATHER_API_KEY:
-    raise ValueError("No OPENWEATHER_API_KEY found in environment variables. Please set it in your .env file.")
+# OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY") 
+# if not OPENWEATHER_API_KEY:
+#     raise ValueError("No OPENWEATHER_API_KEY found in environment variables. Please set it in your .env file.")
 
 
 # -------- Signup API --------
@@ -102,33 +103,29 @@ def detect_lesion():
     return jsonify({"detections": response_boxes})
 
 # -------- Weather API --------
-@app.route("/api/weather", methods=["GET"])
+@app.route("/api/weather", methods=["POST"])
 def get_weather():
-    latitude = request.args.get('lat')
-    longitude = request.args.get('lon')
+    data = request.get_json()
+    latitude = data.get('lat')
+    longitude = data.get('lon')
 
     if not latitude or not longitude:
         return jsonify({"error": "Latitude and longitude are required"}), 400
 
     try:
-        open_weather_url = (
-            f"https://api.openweathermap.org/data/3.0/onecall?"
-            f"lat={latitude}&lon={longitude}&appid={OPENWEATHER_API_KEY}&units=metric"
-            f"&exclude=minutely,hourly,daily,alerts"
-        )
+        open_weather_url= (f"https://api.weatherbit.io/v2.0/current?lat={latitude}&lon={longitude}&key={WEATHERBIT_API}&include=minutely")
         response = requests.get(open_weather_url)
         response.raise_for_status()
         
         weather_data = response.json()
-        
-        current_weather = weather_data.get('current', {})
+        current_weather = weather_data.get('data', {})[0]
         temp = current_weather.get('temp')
-        uvi = current_weather.get('uvi')
+        uvi = current_weather.get('uv')
 
         if temp is None or uvi is None:
             return jsonify({"error": "Weather data is incomplete from the external API"}), 500
 
-        return jsonify({"temp": temp, "uvi": uvi})
+        return jsonify({"temp": temp, "uvi": uvi}), 200
 
     except requests.exceptions.RequestException as e:
         print(f"Error fetching from OpenWeatherMap: {e}")
@@ -136,6 +133,7 @@ def get_weather():
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         return jsonify({"error": "An unexpected server error occurred"}), 500
+
     
 @app.route("/api/blogs",methods=['GET'])
 def get_blogs():

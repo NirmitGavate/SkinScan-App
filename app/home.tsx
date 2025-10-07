@@ -27,36 +27,47 @@ export default function Home() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setErrorMsg('Location permission denied');
-        setLoadingWeather(false);
-        return;
-      }
+  (async () => {
+    let { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      setErrorMsg('Location permission denied');
+      setLoadingWeather(false);
+      return;
+    }
 
-      try {
-        let location = await Location.getCurrentPositionAsync({});
-        const { latitude, longitude } = location.coords;
-        
-        const BACKEND_WEATHER_URL = `http://10.0.2.2:5000/api/weather?lat=${latitude}&lon=${longitude}`;
-        
-        const response = await fetch(BACKEND_WEATHER_URL);
-        const data = await response.json();
+    try {
+      let location = await Location.getCurrentPositionAsync({});
+      const { latitude, longitude } = location.coords;
 
-        if (response.ok) {
-          setWeather({ temp: data.temp, uvi: data.uvi });
-        } else {
-          setErrorMsg(data.error || 'Failed to fetch weather');
-        }
-      } catch (error) {
-        setErrorMsg('Error fetching weather data from backend.');
-        console.error(error);
-      } finally {
-        setLoadingWeather(false);
+      const BACKEND_WEATHER_URL = 'http://10.0.2.2:5000/api/weather';
+
+      const response = await fetch(BACKEND_WEATHER_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          lat: latitude,
+          lon: longitude,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setWeather({ temp: data.temp, uvi: data.uvi });
+      } else {
+        setErrorMsg(data.error || 'Failed to fetch weather');
       }
-    })();
-  }, []);
+    } catch (error) {
+      setErrorMsg('Error fetching weather data from backend.');
+      console.error(error);
+    } finally {
+      setLoadingWeather(false);
+    }
+  })();
+}, []);
+
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
