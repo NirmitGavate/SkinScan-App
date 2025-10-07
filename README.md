@@ -59,7 +59,7 @@ The primary goal is to provide an accessible and user-friendly tool that encoura
 
 ## 📸 Screenshots 
 
-| Home Screen | Lesion Detection | Skin Type Quiz | Educational Blogs |
+| Landing Page | Login Page | Skin Type Quiz | Educational Blogs |
 | :---: | :---: | :---: | :---: |
 | <img src="./screenshots/LandingPage.png" width="200"/> | <img src="./screenshots/LoginPage.png" width="200"/> | <img src="./screenshots/SkinType.png" width="200"/> | <img src="./screenshots/BlogsPage.png" width="200"/> |
 
