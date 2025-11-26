@@ -1,18 +1,19 @@
-import React, { useState, useEffect } from "react";
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  Image, 
-  TouchableOpacity, 
-  ScrollView, 
-  Alert,
-  ActivityIndicator
-} from "react-native";
-import { useRouter } from "expo-router";
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from "expo-image-picker";
 import * as Location from 'expo-location';
-import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from "react-native";
 
 interface WeatherData {
   temp: number;
@@ -39,7 +40,7 @@ export default function Home() {
       let location = await Location.getCurrentPositionAsync({});
       const { latitude, longitude } = location.coords;
 
-      const BACKEND_WEATHER_URL = 'http://10.0.2.2:5000/api/weather';
+      const BACKEND_WEATHER_URL = 'http://192.168.0.103:5000/api/weather';
 
       const response = await fetch(BACKEND_WEATHER_URL, {
         method: 'POST',
@@ -86,27 +87,36 @@ export default function Home() {
       Alert.alert("No image selected", "Please select an image first.");
       return;
     }
+    
+    console.log("📤 Starting upload...", image);
+    
     const formData = new FormData();
     formData.append("file", {
       uri: image,
       name: "photo.jpg",
       type: "image/jpeg",
     } as any);
+
     try {
-      const response = await fetch("http://10.0.2.2:5000/api/upload", {
+      console.log("🔄 Calling upload API...");
+      const response = await fetch("http://192.168.0.103:5000/api/upload", {
         method: "POST",
-        headers: { "Content-Type": "multipart/form-data" },
         body: formData,
+        // REMOVE the Content-Type header - let React Native set it automatically
       });
+      
+      console.log("📨 Response status:", response.status);
       const data = await response.json();
+      console.log("📨 Response data:", data);
+      
       if (response.ok) {
         Alert.alert("Analysis Complete", `Detections: ${JSON.stringify(data.detections)}`);
       } else {
         Alert.alert("Error", data.error || "Upload failed");
       }
     } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "Something went wrong!");
+      console.error("❌ Upload error:", error);
+      Alert.alert("Error", "Something went wrong during upload!");
     }
   };
   
@@ -167,6 +177,21 @@ export default function Home() {
         <MaterialCommunityIcons name="book-open-page-variant" size={22} color="#fff" />
         <Text style={styles.blogsButtonText}>View Blogs</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity style={styles.hospitalsButton} onPress={() => router.push('/hospitals')}>
+        <Feather name="map-pin" size={22} color="#fff" />
+        <Text style={styles.hospitalsButtonText}>Find Hospitals</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.remindersButton} onPress={() => router.push('/reminders')}>
+        <MaterialCommunityIcons name="bell-outline" size={22} color="#fff" />
+        <Text style={styles.remindersButtonText}>Set Reminders</Text>
+      </TouchableOpacity>
+      // Add this to your home screen buttons section (after the existing buttons)
+      <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/profile')}>
+        <MaterialCommunityIcons name="account-edit-outline" size={22} color="#fff" />
+        <Text style={styles.profileButtonText}>Edit Profile</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -193,5 +218,53 @@ const styles = StyleSheet.create({
   weatherItem: { alignItems: 'center', flex: 1, paddingVertical: 10, marginHorizontal: 5, borderRadius: 8, backgroundColor: '#f8f8f8', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 1, elevation: 1, },
   weatherData: { fontSize: 22, fontWeight: 'bold', color: '#4b7bec', marginTop: 8, },
   weatherLabel: { fontSize: 14, color: '#666', marginTop: 4, textAlign: 'center', },
-  errorText: { fontSize: 16, color: '#d9534f', marginVertical: 20, textAlign: 'center', }
+  errorText: { fontSize: 16, color: '#d9534f', marginVertical: 20, textAlign: 'center', },
+  hospitalsButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: '#e74c3c',
+  paddingVertical: 10,
+  paddingHorizontal: 24,
+  borderRadius: 20,
+  alignSelf: 'center',
+  marginBottom: 20,
+},
+hospitalsButtonText: {
+  color: '#fff',
+  fontSize: 16,
+  fontWeight: 'bold',
+  marginLeft: 8,
+  },
+remindersButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: '#ff6b6b',
+  paddingVertical: 10,
+  paddingHorizontal: 24,
+  borderRadius: 20,
+  alignSelf: 'center',
+  marginBottom: 20,
+},
+remindersButtonText: {
+  color: '#fff',
+  fontSize: 16,
+  fontWeight: 'bold',
+  marginLeft: 8,
+  },
+profileButton: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: '#9b59b6',
+  paddingVertical: 10,
+  paddingHorizontal: 24,
+  borderRadius: 20,
+  alignSelf: 'center',
+  marginBottom: 20,
+},
+profileButtonText: {
+  color: '#fff',
+  fontSize: 16,
+  fontWeight: 'bold',
+  marginLeft: 8,
+},
 });
