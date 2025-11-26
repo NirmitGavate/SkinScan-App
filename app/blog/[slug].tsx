@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Image, StyleSheet, TouchableOpacity, Linking, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 type BlogContentItem = {
   letter?: string;
@@ -30,7 +30,7 @@ export default function BlogDetail() {
     if (!slug) return;
     const fetchBlog = async () => {
       try {
-        const res = await fetch(`http://10.0.2.2:5000/api/blogs/${slug}`); // use HTTP for local dev
+        const res = await fetch(`http://192.168.0.103:5000/api/blogs/${slug}`); // use HTTP for local dev
         if (!res.ok) throw new Error('Failed to fetch blog');
         const data = await res.json();
         setBlog(data);
