@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type BlogListItem = {
   slug: string;
@@ -20,7 +20,7 @@ export default function BlogsList() {
   useEffect(() => {
     const fetchBlogs = async () => {
       try {
-        const res = await fetch('http://10.0.2.2:5000/api/blogs');
+        const res = await fetch('http://192.168.0.103:5000/api/blogs');
         if (!res.ok) throw new Error('Failed to fetch blogs');
         const data = await res.json();
         setBlogs(data);
