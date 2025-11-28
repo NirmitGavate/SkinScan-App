@@ -82,6 +82,51 @@ CLINICAL_MODEL_COLUMNS = []
 clf_model = None
 classification_loaded = False
 
+# ------------ CLINICAL BOOST FIX ---------------
+def apply_clinical_boost(prob_dict, clinical):
+    """
+    Post-processing function to manually boost class probabilities
+    based on key clinical input (ABCDE features).
+    This directly fixes the issue of clinical data not contributing.
+    """
+    # Create a mutable copy of the probabilities dictionary
+    p = prob_dict.copy()
+
+    # Convert string keys (from JSON) to floats for modification
+    for k in p:
+        p[k] = float(p[k])
+
+    # --- Malignancy/Advanced Lesion Boost (Evolution, Bleeding) ---
+    # If the lesion has changed (Evolution) or is bleeding (Bleed), boost severe classes (MEL/SCC).
+    if clinical.get("changed", 0) == 1 or clinical.get("bleed", 0) == 1:
+        p["MEL"] = p.get("MEL", 0) + 0.7
+        p["SCC"] = p.get("SCC", 0) + 0.4
+        # Minor decrease in benign/less severe
+        p["NEV"] = max(0.0, p.get("NEV", 0) - 0.2)
+        p["SEK"] = max(0.0, p.get("SEK", 0) - 0.2)
+
+
+    # --- SCC/ACK Boost (Itch and Elevation) ---
+    # SCCs (Squamous Cell Carcinomas) and AKs (Actinic Keratosis) are often itchy and elevated.
+    if clinical.get("itch", 0) == 1 and clinical.get("elevation", 0) == 1:
+        p["SCC"] = p.get("SCC", 0) + 0.4
+        p["ACK"] = p.get("ACK", 0) + 0.4
+        
+
+    # --- Benign Boost (Stable Lesion) ---
+    # If all key clinical symptoms are absent, boost the benign Nevus class.
+    if all(clinical.get(k, 0) == 0 for k in ["itch","grew","hurt","changed","bleed","elevation"]):
+        p["NEV"] = p.get("NEV", 0) + 0.6
+        # Minor decrease in malignant classes
+        p["MEL"] = max(0.0, p.get("MEL", 0) - 0.1)
+        p["SCC"] = max(0.0, p.get("SCC", 0) - 0.1)
+
+
+    # --- Normalization ---
+    total = sum(p.values())
+    # Normalize the boosted probabilities back to sum to 1.0
+    return {k: round(v/total, 4) for k, v in p.items()}
+
 # -------- Try to Load Classification Model (Optional) --------
 try:
     # Load Clinical Preprocessing Objects
@@ -303,9 +348,9 @@ def detect_lesion():
                     "changed": int(request.form.get("changed", 0)),
                     "bleed": int(request.form.get("bleed", 0)),
                     "elevation": int(request.form.get("elevation", 0)),
-                    "age": 45,  # Default values
-                    "gender": "other",
-                    "fitspatrick": 3
+                    "age": int(request.form.get("age", 45)),  # Updated default
+                    "gender": request.form.get("gender", "other"),
+                    "fitspatrick": int(request.form.get("fitspatrick", 3))
                 }
                 
                 # Process clinical data
@@ -323,29 +368,31 @@ def detect_lesion():
                 with torch.no_grad():
                     outputs = clf_model(img_tensor, cli_tensor)
                     probabilities = torch.softmax(outputs, dim=1)[0]
-                    prediction_idx = torch.argmax(probabilities).item()
                 
-                predicted_class = CLASS_ORDER[prediction_idx]
-                confidence = probabilities[prediction_idx].item()
-                
-                is_cancerous = predicted_class in ["NEV", "ACK", "SEK"]
-                cancer_status = "Potentially Cancerous" if is_cancerous else "Non-Cancerous"
-
+                # Get initial probabilities
                 prob_dict = {
                     CLASS_ORDER[i]: float(probabilities[i].item()) for i in range(NUM_CLASSES)
                 }
-                
-                
 
+                # --- APPLY CLINICAL BOOST FIX ---
+                boosted_probs = apply_clinical_boost(prob_dict, clinical_data)
+                
+                # Final prediction based on boosted probabilities
+                predicted_class = max(boosted_probs, key=boosted_probs.get)
+                confidence = boosted_probs[predicted_class]
+
+                is_cancerous = predicted_class in ["MEL", "BCC", "SCC"]
+                cancer_status = "Potentially Cancerous" if is_cancerous else "Non-Cancerous"
+                
                 return jsonify({
                     "status": "Lesion Detected & Classified",
                     "predicted_class": predicted_class,
                     "confidence": confidence,
-                    "probabilities": prob_dict,
+                    "probabilities": boosted_probs,
                     "detections": response_boxes,
                     "cancer_status": cancer_status,
                     "is_cancerous": is_cancerous
-})
+                })
                 
             except Exception as e:
                 print(f"Classification failed, falling back to detection: {e}")
