@@ -33,7 +33,7 @@ The primary goal is to provide an accessible and user-friendly tool that encoura
 - It can answer user questions about suspicious lesions, provide general skin health and lifestyle tips, and offer preventive measures.
 - Designed to enhance user engagement and provide immediate, context-aware guidance.
 
-### 5. Regular Check Reminders (Optional)
+### 5. Regular Check Reminders
 - Users can opt-in for **periodic reminders** to perform self-checks and document new or changing lesions.
 - Encourages consistent monitoring and chronological tracking of skin health.
 
