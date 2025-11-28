@@ -94,7 +94,7 @@ SkinScan-App/
 
 | Category | Key Technologies |
 | :--- | :--- |
-| **Frontend** | React Native, Expo Router, MaterialCommunityIcons |
+| **Frontend** | React Native, Expo Router |
 | **Backend** | Python, Flask, MongoDB |
-| **AI/ML Models** | YOLOv8 (Lesion Detection), MobileNetV3 / EfficientNet-lite (Classification) |
-| **Integrations** | Expo Image Picker, AI Chatbot API, OpenWeather API (UV & Temperature) |
+| **AI/ML Models** | YOLOv8 (Lesion Detection), ResNet50 (Classification) |
+| **Integrations** | Expo Image Picker, OpenAI API, WeatherBit API (UV & Temperature), Google Maps API |
