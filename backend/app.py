@@ -328,17 +328,24 @@ def detect_lesion():
                 predicted_class = CLASS_ORDER[prediction_idx]
                 confidence = probabilities[prediction_idx].item()
                 
+                is_cancerous = predicted_class in ["BCC", "MEL", "SCC"]
+                cancer_status = "Potentially Cancerous" if is_cancerous else "Non-Cancerous"
+
                 prob_dict = {
                     CLASS_ORDER[i]: float(probabilities[i].item()) for i in range(NUM_CLASSES)
                 }
                 
+                
+
                 return jsonify({
                     "status": "Lesion Detected & Classified",
                     "predicted_class": predicted_class,
                     "confidence": confidence,
                     "probabilities": prob_dict,
-                    "detections": response_boxes
-                })
+                    "detections": response_boxes,
+                    "cancer_status": cancer_status,
+                    "is_cancerous": is_cancerous
+})
                 
             except Exception as e:
                 print(f"Classification failed, falling back to detection: {e}")
