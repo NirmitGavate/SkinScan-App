@@ -1,16 +1,34 @@
 import os
+import time
+import json
+from datetime import datetime
+from pathlib import Path
+import numpy as np
+import pandas as pd
+import openai
+from openai import OpenAI
+from PIL import Image
+import cv2
+import requests 
+from dotenv import load_dotenv 
+from bson import ObjectId
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
 from ultralytics import YOLO
-import numpy as np
-import cv2
-import requests 
-from dotenv import load_dotenv 
-from bson import ObjectId
-import json
-from datetime import datetime
+
+# Torch imports for the classification model
+import torch
+import torch.nn as nn
+from torchvision import models, transforms
+
+# Sklearn imports for clinical preprocessing & joblib for loading
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+import joblib 
+
+# ---------------- CONFIG AND SETUP ----------------
 
 app = Flask(__name__)
 CORS(app)
@@ -25,6 +43,10 @@ GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY")
 
 if not MONGO_URI:
     raise ValueError("No MONGO_URI found in environment variables. Please set it in your .env file.")
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if OPENAI_API_KEY:
+    openai.api_key = OPENAI_API_KEY
 
 client = MongoClient(MONGO_URI) 
 db = client['user-info']
@@ -41,6 +63,152 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif"}
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# -------- CLASSIFICATION MODEL CONFIG (Optional - only if files exist) --------
+BEST_MODEL_PATH = "models/best_resnet50_attention_clinical_multiclass.pth" 
+SCALER_PATH = "models/clinical_scaler.joblib" 
+PCA_PATH = "models/clinical_pca.joblib" 
+OHE_COLS_PATH = "models/clinical_ohe_columns.json" 
+
+NUM_CLINICAL_FEATURES_FINAL = 28
+NUM_IMAGE_FEATURES_REDUCED = 112
+CLASS_ORDER = ["BCC", "ACK", "SCC", "MEL", "NEV", "SEK"]
+NUM_CLASSES = len(CLASS_ORDER)
+CLINICAL_USE_COLS = ["age", "gender", "fitspatrick", "region", "itch", "grew", "hurt", "changed", "bleed", "elevation"]
+
+# Global objects to be loaded from disk
+GLOBAL_SCALER = None
+GLOBAL_PCA = None
+CLINICAL_MODEL_COLUMNS = []
+clf_model = None
+classification_loaded = False
+
+# -------- Try to Load Classification Model (Optional) --------
+try:
+    # Load Clinical Preprocessing Objects
+    GLOBAL_SCALER = joblib.load(SCALER_PATH)
+    GLOBAL_PCA = joblib.load(PCA_PATH)
+    with open(OHE_COLS_PATH, 'r') as f:
+        CLINICAL_MODEL_COLUMNS = json.load(f)
+    
+    # ResNet50 Attention Model Class
+    class ResNet50ChannelAttention(nn.Module):
+        def __init__(self, num_classes=NUM_CLASSES, num_cli=NUM_CLINICAL_FEATURES_FINAL, num_img_red=NUM_IMAGE_FEATURES_REDUCED):
+            super().__init__()
+            base = models.resnet50(weights=None) 
+            feat_dim = base.fc.in_features
+            self.feature_extractor = nn.Sequential(*list(base.children())[:-1])
+            self.att_fc = nn.Sequential(
+                nn.Linear(num_cli, feat_dim),
+                nn.ReLU(),
+                nn.Linear(feat_dim, feat_dim),
+            )
+            self.reducer = nn.Sequential(
+                nn.Linear(feat_dim, num_img_red),
+                nn.ReLU(),
+                nn.Dropout(0.5)
+            )
+            self.classifier = nn.Linear(num_img_red + num_cli, num_classes)
+            
+        def forward(self, x_img, x_cli):
+            x = self.feature_extractor(x_img)
+            x = torch.flatten(x, 1)
+            att = self.att_fc(x_cli)
+            att = torch.sigmoid(att)
+            x_att = x * att
+            x_red = self.reducer(x_att)
+            x_comb = torch.cat([x_red, x_cli], dim=1)
+            return self.classifier(x_comb)
+
+    # Load Classification Model
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    clf_model = ResNet50ChannelAttention(num_classes=NUM_CLASSES).to(device)
+    
+    state = torch.load(BEST_MODEL_PATH, map_location=device, weights_only=False) 
+    clf_model.load_state_dict(state["model_state"]) 
+    clf_model.eval()
+    
+    classification_loaded = True
+    print(f"✅ Loaded classification model: {BEST_MODEL_PATH} on {device}")
+    
+except Exception as e:
+    print(f"⚠️ Classification model not loaded: {e}")
+    print("🔵 Falling back to YOLO detection only")
+    classification_loaded = False
+
+# -------- Image Preprocessing Functions --------
+def apply_shades_of_gray_p6(image_bgr):
+    img = image_bgr.astype(np.float32)
+    R = img[:, :, 2]; G = img[:, :, 1]; B = img[:, :, 0]
+    eps = 1e-8
+    Rp = np.power(R + eps, 6).mean()
+    Gp = np.power(G + eps, 6).mean()
+    Bp = np.power(B + eps, 6).mean()
+    Rm = np.power(Rp, 1/6)
+    Gm = np.power(Gp, 1/6)
+    Bm = np.power(Bp, 1/6)
+    Gray = (Rm + Gm + Bm) / 3.0
+    sR = Gray / (Rm + 1e-6)
+    sG = Gray / (Gm + 1e-6)
+    sB = Gray / (Bm + 1e-6)
+    out = img.copy()
+    out[:, :, 2] = np.clip(out[:, :, 2] * sR, 0, 255)
+    out[:, :, 1] = np.clip(out[:, :, 1] * sG, 0, 255)
+    out[:, :, 0] = np.clip(out[:, :, 0] * sB, 0, 255)
+    return out.astype(np.uint8)
+
+def apply_clahe(image_bgr):
+    lab = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2LAB)
+    L, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    L = clahe.apply(L)
+    lab = cv2.merge([L, a, b])
+    return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+def preprocess_image(image_bgr):
+    img = apply_shades_of_gray_p6(image_bgr)
+    img = apply_clahe(img)
+    return img
+
+VAL_TRANSFORM = transforms.Compose([
+    transforms.Resize((224,224)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+])
+
+# -------- Clinical Data Processor --------
+def process_clinical_data(data_row, scaler, pca, model_columns):
+    if not model_columns:
+        raise RuntimeError("Clinical model columns not loaded. Cannot process data.")
+        
+    df_single = pd.DataFrame([data_row])
+    
+    numeric_cols = ["age"] 
+    categorical_cols = [col for col in CLINICAL_USE_COLS if col not in numeric_cols]
+    
+    for nc in numeric_cols:
+        df_single[nc] = pd.to_numeric(df_single[nc], errors='coerce').fillna(45.0) 
+
+    for cc in categorical_cols:
+        df_single[cc] = df_single[cc].astype(object).fillna("missing").astype(str)
+
+    df_cat = pd.get_dummies(df_single[categorical_cols], drop_first=False)
+    df_combined = pd.concat([df_single[numeric_cols], df_cat], axis=1)
+    
+    df_aligned = pd.DataFrame(0, index=[0], columns=model_columns, dtype=np.float32)
+    
+    for col in df_combined.columns:
+        if col in df_aligned.columns:
+            df_aligned[col] = df_combined[col].iloc[0]
+            
+    X_scaled = scaler.transform(df_aligned.values.astype(np.float32))
+    X_pca = pca.transform(X_scaled)
+    
+    if X_pca.shape[1] < NUM_CLINICAL_FEATURES_FINAL:
+        pad_width = NUM_CLINICAL_FEATURES_FINAL - X_pca.shape[1]
+        X_pca = np.concatenate([X_pca, np.zeros((X_pca.shape[0], pad_width), dtype=np.float32)], axis=1)
+        
+    return X_pca[0] 
+
 # -------- JSON Encoder --------
 class JSONEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -50,7 +218,8 @@ class JSONEncoder(json.JSONEncoder):
 
 app.json_encoder = JSONEncoder
 
-# -------- Home Route --------
+# ----------------- ROUTES -----------------
+
 @app.route('/')
 def home():
     return "SkinScan Backend is Running!"
@@ -94,9 +263,10 @@ def login():
     else:
         return jsonify({"error": "Invalid email or password"}), 401
 
-# -------- Lesion Detection API --------
+# -------- Enhanced Skin Lesion Analysis Route --------
 @app.route("/api/upload", methods=["POST"])
 def detect_lesion():
+    # Basic validation
     if "file" not in request.files:
         return jsonify({"error": "No file part"}), 400
     file = request.files["file"]
@@ -104,18 +274,92 @@ def detect_lesion():
         return jsonify({"error": "No file selected"}), 400
     if not allowed_file(file.filename):
         return jsonify({"error": "File type not allowed"}), 400
+    
+    # Read image
     file_bytes = np.frombuffer(file.read(), np.uint8)
     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
     if img is None:
         return jsonify({"error": "Failed to read image"}), 400
+    
+    # Run YOLO detection
     results = model(img)
     response_boxes = []
+    
     if results and len(results[0].boxes) > 0:
         for box in results[0].boxes:
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
             conf = float(box.conf[0])
             response_boxes.append({"x1": x1, "y1": y1, "x2": x2, "y2": y2, "confidence": conf})
-    return jsonify({"detections": response_boxes})
+        
+        # If classification model is loaded, try to run classification
+        if classification_loaded:
+            try:
+                # Get clinical data from form
+                clinical_data = {
+                    "region": request.form.get("region", "trunk"),
+                    "itch": int(request.form.get("itch", 0)),
+                    "grew": int(request.form.get("grew", 0)),
+                    "hurt": int(request.form.get("hurt", 0)),
+                    "changed": int(request.form.get("changed", 0)),
+                    "bleed": int(request.form.get("bleed", 0)),
+                    "elevation": int(request.form.get("elevation", 0)),
+                    "age": 45,  # Default values
+                    "gender": "other",
+                    "fitspatrick": 3
+                }
+                
+                # Process clinical data
+                cli_vec_np = process_clinical_data(clinical_data, GLOBAL_SCALER, GLOBAL_PCA, CLINICAL_MODEL_COLUMNS)
+                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+                cli_tensor = torch.tensor(cli_vec_np, dtype=torch.float32).unsqueeze(0).to(device)
+                
+                # Process image for classification
+                img_preprocessed_bgr = preprocess_image(img)
+                img_rgb = cv2.cvtColor(img_preprocessed_bgr, cv2.COLOR_BGR2RGB)
+                img_pil = Image.fromarray(img_rgb)
+                img_tensor = VAL_TRANSFORM(img_pil).unsqueeze(0).to(device)
+                
+                # Run classification
+                with torch.no_grad():
+                    outputs = clf_model(img_tensor, cli_tensor)
+                    probabilities = torch.softmax(outputs, dim=1)[0]
+                    prediction_idx = torch.argmax(probabilities).item()
+                
+                predicted_class = CLASS_ORDER[prediction_idx]
+                confidence = probabilities[prediction_idx].item()
+                
+                prob_dict = {
+                    CLASS_ORDER[i]: float(probabilities[i].item()) for i in range(NUM_CLASSES)
+                }
+                
+                return jsonify({
+                    "status": "Lesion Detected & Classified",
+                    "predicted_class": predicted_class,
+                    "confidence": confidence,
+                    "probabilities": prob_dict,
+                    "detections": response_boxes
+                })
+                
+            except Exception as e:
+                print(f"Classification failed, falling back to detection: {e}")
+                # Fall back to basic detection
+                return jsonify({
+                    "status": "Lesion Detected",
+                    "message": "Lesion detected but classification failed",
+                    "detections": response_boxes
+                })
+        else:
+            # Classification not loaded, return basic detection
+            return jsonify({
+                "status": "Lesion Detected", 
+                "message": "Lesion detected successfully",
+                "detections": response_boxes
+            })
+    else:
+        return jsonify({
+            "status": "No Lesion Detected",
+            "message": "No lesions detected in the image"
+        })
 
 # -------- Weather API --------
 @app.route("/api/weather", methods=["POST"])
@@ -143,7 +387,7 @@ def get_weather():
         return jsonify({"temp": temp, "uvi": uvi}), 200
 
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching from OpenWeatherMap: {e}")
+        print(f"Error fetching from WeatherBit: {e}")
         return jsonify({"error": "Failed to fetch weather data from external service"}), 502
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
@@ -279,14 +523,10 @@ def api_update_skin_tone():
         username = data.get('username')
         fitzpatrick_level = data.get('fitzpatrickLevel')
         
-        print(f"🔄 Updating skin tone for user: {username} to level: {fitzpatrick_level}")
+        print(f"Updating skin tone for {username} to level {fitzpatrick_level}")
         
         if not username or fitzpatrick_level is None:
             return jsonify({'success': False, 'error': 'Missing required fields'}), 400
-        
-        # Update in MongoDB - profile database
-        db_profile = client['profile']
-        profile_info = db_profile['profile-info']
         
         result = profile_info.update_one(
             {'userId': username},
@@ -294,10 +534,10 @@ def api_update_skin_tone():
                 'skinProfile.fitzpatrickLevel': fitzpatrick_level,
                 'updatedAt': datetime.utcnow()
             }},
-            upsert=True  # Create if doesn't exist
+            upsert=True
         )
         
-        print(f"✅ MongoDB update result - Matched: {result.matched_count}, Modified: {result.modified_count}")
+        print(f"MongoDB update result: {result.modified_count} documents modified")
         
         return jsonify({
             'success': True, 
@@ -306,7 +546,7 @@ def api_update_skin_tone():
         })
     
     except Exception as e:
-        print(f"❌ Error updating skin tone: {e}")
+        print(f"Error updating skin tone: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/profile/update', methods=['POST'])
@@ -315,21 +555,19 @@ def api_update_profile():
         data = request.json
         username = data.get('username')
         
-        print(f"🔄 Updating profile for: {username}")
-        print(f"📦 Received data: {data}")
+        print(f"Updating profile for: {username}")
+        print(f"Received data: {data}")
         
         if not username:
             return jsonify({'success': False, 'error': 'Username is required'}), 400
         
-        # Use profile database
-        db_profile = client['profile']
-        profile_info = db_profile['profile-info']
-        
         update_data = {
             'userId': username,
             'personalInfo': {
-                'name': data.get('username', ''),
-                'email': data.get('email', '')
+                'name': data.get('name', ''),
+                'email': data.get('email', ''),
+                'gender': data.get('gender', ''),
+                'age': data.get('age', '')
             },
             'skinProfile': {
                 'fitzpatrickLevel': data.get('fitzpatrickLevel', 3),
@@ -339,13 +577,12 @@ def api_update_profile():
             'updatedAt': datetime.utcnow()
         }
         
-        # Check if profile exists
         existing_profile = profile_info.find_one({'userId': username})
         if not existing_profile:
             update_data['createdAt'] = datetime.utcnow()
-            print("🆕 Creating new profile document")
+            print("Creating new profile")
         else:
-            print("📝 Updating existing profile document")
+            print("Updating existing profile")
         
         result = profile_info.update_one(
             {'userId': username},
@@ -353,136 +590,248 @@ def api_update_profile():
             upsert=True
         )
         
-        print(f"✅ Profile update successful - Matched: {result.matched_count}, Modified: {result.modified_count}")
-        
-        # Verify the update
-        updated_profile = profile_info.find_one({'userId': username})
-        print(f"🔍 Updated profile in DB: {updated_profile}")
+        print(f"Profile update successful: {result.modified_count} modified")
         
         return jsonify({'success': True, 'message': 'Profile updated successfully'})
     
     except Exception as e:
-        print(f"❌ Error updating profile: {e}")
+        print(f"Error updating profile: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/profile/<username>', methods=['GET'])
 def api_get_profile(username):
     try:
-        print(f"🔍 Fetching profile for: {username}")
-        
-        # Use profile database
-        db_profile = client['profile']
-        profile_info = db_profile['profile-info']
+        print(f"Fetching profile for: {username}")
         
         profile = profile_info.find_one({'userId': username})
         
         if not profile:
-            print("❌ Profile not found, returning default")
+            print("Profile not found, returning default")
             return jsonify({
                 'success': True, 
                 'profile': {
                     'userId': username,
-                    'personalInfo': {'name': '', 'email': ''},
+                    'personalInfo': {'name': '', 'email': '', 'gender': '', 'age': ''},
                     'skinProfile': {'fitzpatrickLevel': 3, 'skinType': '', 'conditions': []}
                 }
             })
         
-        # Convert ObjectId to string for JSON serialization
         if '_id' in profile:
             profile['_id'] = str(profile['_id'])
         
-        print(f"✅ Profile found: {profile}")
+        print(f"Profile found: {profile}")
         return jsonify({'success': True, 'profile': profile})
     
     except Exception as e:
-        print(f"❌ Error fetching profile: {e}")
+        print(f"Error fetching profile: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
     
-# -------- Legacy Profile APIs (Keep for compatibility) --------
-@app.route('/api/profile', methods=['POST'])
-def create_user_profile():
+
+# -------- Enhanced Chatbot Configuration --------
+CHATBOT_SYSTEM_PROMPT = """
+You are SkinAI, an intelligent and empathetic dermatology assistant for the SkinScan mobile app. Your role is to:
+
+APP NAVIGATION HELP:
+- Guide users to use different features: skin analysis, hospital finder, blog, reminders, profile
+- Explain what each screen does and how to use it
+- Help users understand their skin analysis results
+- Assist with setting up reminders and finding healthcare providers
+
+SKIN HEALTH EXPERTISE:
+- Provide accurate information about skin conditions, prevention, and care
+- Explain medical terms in simple language (melanoma, BCC, SCC, etc.)
+- Offer sun protection advice and skincare routines
+- Guide on when to seek professional medical help
+
+CONVERSATIONAL STYLE:
+- Be warm, friendly, and conversational like a helpful friend
+- Ask follow-up questions to understand user needs better
+- Provide detailed, helpful responses (3-5 paragraphs when needed)
+- Use emojis occasionally to make it engaging 👍
+
+CRITICAL SAFETY:
+- ⚠️ ALWAYS state you are an AI assistant and not a substitute for medical advice
+- ⚠️ NEVER diagnose - always recommend consulting dermatologists
+- ⚠️ For urgent concerns, advise immediate medical attention
+- ⚠️ Be clear about limitations
+
+APP FEATURES TO MENTION:
+- Skin Analysis: "Take a photo of any skin spot for AI analysis"
+- Hospital Finder: "Find nearby dermatologists and skin cancer centers" 
+- Blog: "Read educational articles about skin health"
+- Reminders: "Set reminders for skin checks and sun protection"
+- Profile: "Set up your skin type and preferences"
+
+Be genuinely helpful and make users feel supported in their skin health journey! 🌟
+"""
+
+# Enhanced quick responses for better fallback
+QUICK_RESPONSES = {
+    "skin analysis": "You can analyze skin spots using our AI! 📸 Go to the Home screen, take or upload a photo, and fill in the clinical information. The AI will check for concerning features and provide insights. Remember, this is screening only - always consult a doctor for diagnosis!",
+    
+    "hospitals": "Need to find a dermatologist? 🏥 Go to the Hospitals screen to find nearby skin cancer centers and dermatology clinics. You can see ratings, contact info, and get directions!",
+    
+    "blog": "Want to learn more about skin health? 📚 Check out our Blog section for educational articles about sun protection, skin cancer awareness, and skincare tips written by medical professionals!",
+    
+    "reminders": "Stay on top of your skin health! ⏰ Use the Reminders screen to set alerts for monthly skin self-checks, sunscreen reapplication, and dermatologist appointments.",
+    
+    "profile": "Personalize your experience! 👤 Go to your Profile to set your skin type, Fitzpatrick level, and health conditions. This helps us provide better recommendations!",
+    
+    "skin cancer": "Skin cancer comes in different types. 🎗️ Melanoma is the most serious but least common. Basal cell carcinoma (BCC) and squamous cell carcinoma (SCC) are more common but less likely to spread. Regular skin checks and sun protection are crucial! Always see a dermatologist for proper evaluation.",
+    
+    "sun protection": "Sun safety is key! ☀️ Use broad-spectrum SPF 30+ sunscreen daily, reapply every 2 hours, wear protective clothing and hats, seek shade during peak hours (10 AM-4 PM). Don't forget ears, neck, and hands!",
+    
+    "mole check": "Follow the ABCDE rule for moles: 🔍 Asymmetry (uneven halves), Border irregularity, Color variation, Diameter (>6mm), and Evolution (changing). If you notice any of these, please see a dermatologist promptly!",
+    
+    "skin routine": "Basic skincare routine: 🧴 Gentle cleanser, moisturizer, and daily sunscreen. For specific concerns, you might add vitamin C (morning) or retinol (night). Always patch test new products!",
+    
+    "when to see doctor": "See a dermatologist if you notice: 🚨 New growths, changing moles, non-healing sores, itching/bleeding spots, or any skin changes that concern you. Early detection saves lives!"
+}
+
+@app.route("/api/chat", methods=["POST"])
+def chat_with_ai():
+    """
+    Enhanced chatbot endpoint with navigation help and conversational AI
+    """
     try:
-        data = request.json
-        age = data.get('age')
-        gender = data.get('gender')
-        skin_fairness = data.get('skinFairness')
-
-        if not age or not gender or skin_fairness is None:
-            return jsonify({"error": "All fields are required"}), 400
-
-        if gender not in ['male', 'female', 'other']:
-            return jsonify({"error": "Invalid gender"}), 400
-
-        if skin_fairness not in [1, 2, 3, 4, 5, 6]:
-            return jsonify({"error": "Invalid skin fairness value"}), 400
-
-        profile_data = {
-            "age": age,
-            "gender": gender,
-            "skinFairness": skin_fairness,
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow()
-        }
-
-        result = profiles_collection.insert_one(profile_data)
-        profile_data['_id'] = result.inserted_id
+        data = request.get_json()
         
-        return jsonify(profile_data), 201
-
-    except Exception as e:
-        print(f"Error creating profile: {e}")
-        return jsonify({"error": "Failed to create profile"}), 500
-
-@app.route('/api/profile/<profile_id>', methods=['PUT'])
-def update_legacy_profile(profile_id):
-    try:
-        data = request.json
+        if not data or 'message' not in data:
+            return jsonify({"error": "No message provided"}), 400
         
-        if not ObjectId.is_valid(profile_id):
-            return jsonify({"error": "Invalid profile ID"}), 400
-
-        update_fields = {"updated_at": datetime.utcnow()}
-        if 'age' in data:
-            update_fields['age'] = data['age']
-        if 'gender' in data:
-            if data['gender'] not in ['male', 'female', 'other']:
-                return jsonify({"error": "Invalid gender"}), 400
-            update_fields['gender'] = data['gender']
-        if 'skinFairness' in data:
-            if data['skinFairness'] not in [1, 2, 3, 4, 5, 6]:
-                return jsonify({"error": "Invalid skin fairness value"}), 400
-            update_fields['skinFairness'] = data['skinFairness']
-
-        result = profiles_collection.update_one(
-            {"_id": ObjectId(profile_id)},
-            {"$set": update_fields}
-        )
-
-        if result.matched_count == 0:
-            return jsonify({"error": "Profile not found"}), 404
-
-        updated_profile = profiles_collection.find_one({"_id": ObjectId(profile_id)})
-        return jsonify(updated_profile), 200
-
+        user_message = data['message']
+        user_id = data.get('user_id', 'anonymous')
+        
+        # Check if OpenAI API key is available
+        OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+        
+        if not OPENAI_API_KEY:
+            # Enhanced fallback with better responses
+            response_text = get_enhanced_fallback_response(user_message)
+            
+            return jsonify({
+                "success": True,
+                "response": response_text,
+                "type": "enhanced_fallback",
+                "timestamp": datetime.utcnow().isoformat()
+            })
+        
+        # Use OpenAI API with new client structure
+        try:
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": CHATBOT_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_message}
+                ],
+                max_tokens=800,
+                temperature=0.8,
+                presence_penalty=0.3,
+                frequency_penalty=0.2
+            )
+            
+            ai_response = response.choices[0].message.content
+            
+        except Exception as e:
+            print(f"OpenAI API error: {e}")
+            # Enhanced fallback
+            ai_response = get_enhanced_fallback_response(user_message)
+        
+        # Store chat history
+        try:
+            chat_collection = db['chat_history']
+            chat_collection.insert_one({
+                "user_id": user_id,
+                "user_message": user_message,
+                "ai_response": ai_response,
+                "timestamp": datetime.utcnow()
+            })
+        except Exception as e:
+            print(f"Failed to save chat history: {e}")
+        
+        return jsonify({
+            "success": True,
+            "response": ai_response,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        
     except Exception as e:
-        print(f"Error updating profile: {e}")
-        return jsonify({"error": "Failed to update profile"}), 500
+        print(f"Chat error: {e}")
+        # Even on error, provide a helpful response
+        error_response = "I'm here to help! 🌟 You can ask me about:\n\n• Skin analysis and how to use the app\n• Finding nearby dermatologists\n• Skin cancer information and prevention\n• Skincare routines and sun protection\n• Setting reminders for skin checks\n\nWhat would you like to know?"
+        
+        return jsonify({
+            "success": True,
+            "response": error_response,
+            "type": "error_fallback",
+            "timestamp": datetime.utcnow().isoformat()
+        })
 
-@app.route('/api/profile/<profile_id>', methods=['GET'])
-def get_legacy_profile(profile_id):
+def get_enhanced_fallback_response(user_message):
+    """Enhanced fallback responses with better matching"""
+    message_lower = user_message.lower()
+    
+    # Navigation and app features
+    if any(word in message_lower for word in ['analyze', 'scan', 'photo', 'picture', 'image', 'skin spot']):
+        return QUICK_RESPONSES['skin analysis']
+    elif any(word in message_lower for word in ['hospital', 'doctor', 'dermatologist', 'clinic', 'find help']):
+        return QUICK_RESPONSES['hospitals']
+    elif any(word in message_lower for word in ['blog', 'article', 'learn', 'education', 'read']):
+        return QUICK_RESPONSES['blog']
+    elif any(word in message_lower for word in ['reminder', 'alert', 'schedule', 'remember']):
+        return QUICK_RESPONSES['reminders']
+    elif any(word in message_lower for word in ['profile', 'settings', 'skin type', 'fitzpatrick']):
+        return QUICK_RESPONSES['profile']
+    
+    # Skin health topics
+    elif any(word in message_lower for word in ['cancer', 'melanoma', 'bcc', 'scc', 'basal', 'squamous']):
+        return QUICK_RESPONSES['skin cancer']
+    elif any(word in message_lower for word in ['sun', 'uv', 'protect', 'sunscreen', 'spf']):
+        return QUICK_RESPONSES['sun protection']
+    elif any(word in message_lower for word in ['mole', 'check', 'abcde', 'spot']):
+        return QUICK_RESPONSES['mole check']
+    elif any(word in message_lower for word in ['routine', 'skincare', 'products', 'cleanse', 'moisturize']):
+        return QUICK_RESPONSES['skin routine']
+    elif any(word in message_lower for word in ['when to see', 'doctor', 'dermatologist', 'appointment', 'urgent']):
+        return QUICK_RESPONSES['when to see doctor']
+    
+    # Greetings and general help
+    elif any(word in message_lower for word in ['hello', 'hi', 'hey', 'greetings']):
+        return "Hello! I'm SkinAI, your dermatology assistant! 🌟 I can help you with skin analysis, finding doctors, learning about skin health, and navigating the app. What would you like to know today?"
+    elif any(word in message_lower for word in ['help', 'what can you do', 'features']):
+        return "I can help you with many things! 🎯\n\n• **Skin Analysis**: Guide you through taking photos for AI screening\n• **Find Help**: Locate nearby dermatologists and skin clinics\n• **Education**: Explain skin conditions and prevention\n• **Reminders**: Set up skin check alerts\n• **Navigation**: Help you use all app features\n\nWhat would you like assistance with?"
+    elif any(word in message_lower for word in ['thank', 'thanks']):
+        return "You're very welcome! 😊 I'm here whenever you need help with your skin health journey. Don't hesitate to ask if you have more questions!"
+    
+    # Default helpful response
+    return "I'm here to help with your skin health! 🌟 You can ask me about:\n\n• Using the skin analysis feature\n• Finding nearby dermatologists\n• Understanding skin conditions\n• Sun protection and skincare\n• Setting up reminders\n• Navigating the app\n\nWhat would you like to know more about?"
+
+@app.route("/api/chat/quick", methods=["POST"])
+def quick_chat():
+    """
+    Enhanced quick responses with better matching
+    """
     try:
-        if not ObjectId.is_valid(profile_id):
-            return jsonify({"error": "Invalid profile ID"}), 400
-
-        profile = profiles_collection.find_one({"_id": ObjectId(profile_id)})
-        if not profile:
-            return jsonify({"error": "Profile not found"}), 404
-
-        return jsonify(profile), 200
-
+        data = request.get_json()
+        message = data.get('message', '')
+        
+        response = get_enhanced_fallback_response(message)
+        
+        return jsonify({
+            "success": True,
+            "response": response,
+            "type": "enhanced_quick",
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        
     except Exception as e:
-        print(f"Error fetching profile: {e}")
-        return jsonify({"error": "Failed to fetch profile"}), 500
+        return jsonify({
+            "success": True,
+            "response": "Hello! I'm SkinAI! I can help you with skin analysis, finding doctors, and answering skin health questions. What would you like to know?",
+            "error": str(e)
+        })
 
 # -------- Main Execution --------
 if __name__ == '__main__':
