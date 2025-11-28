@@ -328,7 +328,7 @@ def detect_lesion():
                 predicted_class = CLASS_ORDER[prediction_idx]
                 confidence = probabilities[prediction_idx].item()
                 
-                is_cancerous = predicted_class in ["BCC", "MEL", "SCC"]
+                is_cancerous = predicted_class in ["NEV", "ACK", "SEK"]
                 cancer_status = "Potentially Cancerous" if is_cancerous else "Non-Cancerous"
 
                 prob_dict = {
