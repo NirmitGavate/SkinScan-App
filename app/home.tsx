@@ -305,6 +305,11 @@ Detections: ${data.detections.length} bounding box(es) found.`;
                 <Text style={styles.profileButtonText}>Edit Profile</Text>
             </TouchableOpacity>
 
+            <TouchableOpacity style={styles.skinTypeButton} onPress={() => router.push('/skinTypeQuiz')}>
+                <MaterialCommunityIcons name="lotion" size={22} color="#fff" />
+                <Text style={styles.skinTypeButtonText}>Know Your Skin Type</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity style={styles.chatbotButton} onPress={() => router.push('/chatbot')}>
                 <Ionicons name="chatbubble-ellipses" size={22} color="#fff" />
                 <Text style={styles.chatbotButtonText}>AI Assistant</Text>
@@ -403,6 +408,22 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     width: '100%', 
     justifyContent: 'center' 
+    },
+    skinTypeButton: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#FF6B35', 
+    padding: 12, 
+    borderRadius: 25, 
+    marginBottom: 10, 
+    width: '100%', 
+    justifyContent: 'center' 
+},
+skinTypeButtonText: { 
+    color: '#fff', 
+    fontSize: 16, 
+    fontWeight: 'bold', 
+    marginLeft: 8 
 },
     chatbotButtonText: { 
     color: '#fff', 
