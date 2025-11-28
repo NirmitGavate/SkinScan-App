@@ -146,11 +146,12 @@ export default function Home() {
                 if (data.status === "No Lesion Detected") {
                     Alert.alert(data.status, data.message);
                 } else if (data.status === "Lesion Detected & Classified") {
-                    const resultText = `
-                        Predicted Class: ${data.predicted_class}
-                        Confidence: ${(data.confidence * 100).toFixed(2)}%
-                        Detections: ${data.detections.length} bounding box(es) found.
-                    `;
+                    // Get cancer status from backend response
+                    const cancerStatus = data.cancer_status || (data.is_cancerous ? "Potentially Cancerous" : "Non-Cancerous");
+                    const resultText = `Predicted Class: ${data.predicted_class}
+Cancer Status: ${cancerStatus}
+Confidence: ${(data.confidence * 100).toFixed(2)}%
+Detections: ${data.detections.length} bounding box(es) found.`;
                     Alert.alert("Classification Complete", resultText);
                 }
             } else {
