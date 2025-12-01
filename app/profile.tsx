@@ -19,6 +19,12 @@ const ProfileScreen = () => {
     setTempProfile(profile);
   }, [profile]);
 
+  useEffect(() => {
+    if (profile.username) {
+      loadProfile(profile.username);
+    }
+  }, [profile.username]);
+
   const getFitzpatrickColor = (level: number): string => {
     const colors = {
       1: '#FFE4CC',
@@ -98,11 +104,63 @@ const ProfileScreen = () => {
           </View>
         </View>
 
-        <View style={styles.inputGroup}>
+        {/* <View style={styles.inputGroup}>
           <Text style={styles.label}>Email</Text>
           <View style={[styles.input, styles.disabledInput]}>
             <Text style={styles.disabledText}>{profile.email}</Text>
           </View>
+        </View> */}
+
+        {/* ADD AGE FIELD */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Age</Text>
+          {isEditing ? (
+            <TextInput
+              style={styles.input}
+              value={tempProfile.age}
+              onChangeText={(text) => setTempProfile({ ...tempProfile, age: text })}
+              placeholder="Enter your age"
+              keyboardType="numeric"
+              maxLength={3}
+            />
+          ) : (
+            <View style={[styles.input, styles.disabledInput]}>
+              <Text style={styles.disabledText}>
+                {profile.age ? `${profile.age} years` : 'Not specified'}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Gender</Text>
+          {isEditing ? (
+            <View style={styles.genderContainer}>
+              {['Male', 'Female'].map((genderOption) => (
+                <TouchableOpacity
+                  key={genderOption}
+                  style={[
+                    styles.genderOption,
+                    tempProfile.gender === genderOption && styles.genderOptionSelected
+                  ]}
+                  onPress={() => setTempProfile({ ...tempProfile, gender: genderOption })}
+                >
+                  <Text style={[
+                    styles.genderOptionText,
+                    tempProfile.gender === genderOption && styles.genderOptionTextSelected
+                  ]}>
+                    {genderOption}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <View style={[styles.input, styles.disabledInput]}>
+              <Text style={styles.disabledText}>
+                {profile.gender || 'Not specified'}
+              </Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -148,7 +206,7 @@ const ProfileScreen = () => {
             value={tempProfile.skinType}
             onChangeText={(text) => setTempProfile({ ...tempProfile, skinType: text })}
             editable={isEditing}
-            placeholder="e.g., Oily, Dry, Combination"
+            placeholder="e.g., Normal, Sensitive, Oily, Dry, Combination, Scaly"
           />
         </View>
 
@@ -162,7 +220,7 @@ const ProfileScreen = () => {
               skinConditions: text.split(',').map(item => item.trim()) 
             })}
             editable={isEditing}
-            placeholder="e.g., Acne, Rosacea, Hyperpigmentation"
+            placeholder="e.g., Acne,  Hyperpigmentation, Large Spots, Skin Moles"
           />
         </View>
       </View>
@@ -253,6 +311,31 @@ const styles = StyleSheet.create({
   disabledText: {
     color: '#666',
     fontSize: 16,
+  },
+  genderContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  genderOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+    backgroundColor: '#fff',
+  },
+  genderOptionSelected: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  genderOptionText: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
+  },
+  genderOptionTextSelected: {
+    color: '#fff',
   },
   skinToneSection: {
     marginBottom: 24,
